@@ -11,6 +11,7 @@ import {
   History,
   ArrowRight,
   ShoppingCart,
+  Warehouse,
 } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -21,7 +22,7 @@ import { StatusBadge, type StatusType } from '@/components/common/StatusBadge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/utils/date';
-import type { ReplenishRequest, ReplenishStatus, UserRole } from '@/types';
+import type { ReplenishRequest, ReplenishStatus, UserRole, PutawayTaskStatus } from '@/types';
 
 const replenishStatusLabels: Record<ReplenishStatus, string> = {
   pending_supervisor: '待组长审批',
@@ -65,10 +66,32 @@ function getCurrentApprovalLevel(status: ReplenishStatus): 1 | 2 | 3 | null {
   }
 }
 
+const putawayStatusLabels: Record<PutawayTaskStatus, string> = {
+  pending: '待分配',
+  assigned: '已分配',
+  in_progress: '上架中',
+  completed: '已完成',
+};
+
+function putawayStatusToBadge(status: PutawayTaskStatus): StatusType {
+  switch (status) {
+    case 'pending':
+      return 'pending';
+    case 'assigned':
+      return 'info';
+    case 'in_progress':
+      return 'processing';
+    case 'completed':
+      return 'success';
+    default:
+      return 'pending';
+  }
+}
+
 export default function InventoryReplenishPage() {
   const { canAccess } = usePermission();
   const user = useAuthStore((state) => state.user);
-  const { replenishRequests, loading, fetchReplenishRequests, approveReplenish, createPutawayTask } =
+  const { replenishRequests, putawayTasks, loading, fetchReplenishRequests, fetchPutawayTasks, approveReplenish } =
     useInventoryStore();
 
   const [selectedRequest, setSelectedRequest] = useState<ReplenishRequest | null>(null);
@@ -81,8 +104,9 @@ export default function InventoryReplenishPage() {
   useEffect(() => {
     if (canAccess('leader')) {
       fetchReplenishRequests();
+      fetchPutawayTasks();
     }
-  }, [canAccess, fetchReplenishRequests]);
+  }, [canAccess, fetchReplenishRequests, fetchPutawayTasks]);
 
   if (!canAccess('leader')) {
     return (
@@ -126,9 +150,6 @@ export default function InventoryReplenishPage() {
     if (!selectedRequest || !userRoleLevel || !user) return;
     setSubmitting(true);
     await approveReplenish(selectedRequest.id, userRoleLevel, user.id, comment.trim() || '同意补货', 'approve');
-    if (selectedRequest.status === 'pending_director') {
-      await createPutawayTask(selectedRequest.id);
-    }
     setSubmitting(false);
     setApproveModalOpen(false);
     setSelectedRequest(null);
@@ -177,6 +198,9 @@ export default function InventoryReplenishPage() {
             const currentLevel = getCurrentApprovalLevel(request.status);
             const isMyTurn = canApprove(request);
             const isLowStock = request.currentStock < request.safeStock;
+            const linkedPutaway = putawayTasks.find(
+              (t) => t.replenishRequestId === request.id || t.id === request.putawayTaskId
+            );
 
             return (
               <div
@@ -246,6 +270,38 @@ export default function InventoryReplenishPage() {
                         <span>原因: {request.reason}</span>
                       </div>
                     </div>
+
+                    {linkedPutaway && (
+                      <div className="mt-3 rounded-lg bg-accent-500/10 border border-accent-500/30 px-4 py-2.5">
+                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                          <div className="flex items-center gap-1.5 text-accent-500 font-medium">
+                            <Warehouse className="w-3.5 h-3.5" />
+                            <span>已生成上架任务</span>
+                          </div>
+                          <div className="text-dark-300">
+                            <span className="text-dark-500">单号：</span>
+                            <span className="font-mono">{linkedPutaway.taskNo}</span>
+                          </div>
+                          <StatusBadge
+                            status={putawayStatusToBadge(linkedPutaway.status)}
+                            size="sm"
+                            text={putawayStatusLabels[linkedPutaway.status]}
+                          />
+                          {linkedPutaway.assigneeName && (
+                            <div className="text-dark-300">
+                              <span className="text-dark-500">执行人：</span>
+                              {linkedPutaway.assigneeName}
+                            </div>
+                          )}
+                          {linkedPutaway.completedAt && (
+                            <div className="text-dark-300">
+                              <span className="text-dark-500">完成：</span>
+                              {formatDateTime(linkedPutaway.completedAt)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col sm:flex-row lg:flex-col gap-3 lg:w-72 shrink-0">

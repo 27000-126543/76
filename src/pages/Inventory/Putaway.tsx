@@ -186,7 +186,7 @@ export default function InventoryPutawayPage() {
                   <span className="ml-2 text-xs">
                     <StatusBadge
                       status={ap.action === 'approve' ? 'success' : 'danger'}
-                      size="xs"
+                      size="sm"
                       text={ap.action === 'approve' ? '已通过' : '已驳回'}
                     />
                   </span>
