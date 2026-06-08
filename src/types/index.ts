@@ -150,6 +150,7 @@ export interface ReplenishRequest {
   createdAt: string;
   applicantId: string;
   applicantName: string;
+  putawayTaskId?: string;
 }
 
 export type PutawayTaskStatus = 'pending' | 'assigned' | 'in_progress' | 'completed';
@@ -167,6 +168,10 @@ export interface PutawayTask {
   status: PutawayTaskStatus;
   createdAt: string;
   completedAt?: string;
+  sourceRequestNo?: string;
+  sourceApplicantName?: string;
+  sourceApprovedAt?: string;
+  sourceApprovals?: ApprovalRecord[];
 }
 
 export type EquipmentType = 'conveyor' | 'sorter' | 'scanner' | 'scale';

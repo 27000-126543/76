@@ -11,6 +11,33 @@ const reasons = ['库存低于安全线', '即将促销备货', '季节性需求
 const applicantNames = ['张三', '李四', '王五', '赵六', '钱七'];
 const approverNames = ['李主管', '王经理', '赵总监'];
 
+const STORAGE_KEY = 'wms_inventory_state_v1';
+
+interface PersistedState {
+  replenishRequests: ReplenishRequest[];
+  putawayTasks: PutawayTask[];
+}
+
+const loadPersisted = (): PersistedState | null => {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(STORAGE_KEY) : null;
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedState;
+  } catch {
+    return null;
+  }
+};
+
+const savePersisted = (state: PersistedState) => {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
 const generateInventory = (count: number): Inventory[] => {
   return Array.from({ length: count }, (_, i) => {
     const safeStock = Math.floor(Math.random() * 200) + 50;
@@ -57,15 +84,17 @@ const generateReplenishRequests = (count: number): ReplenishRequest[] => {
       status,
       createdAt: new Date(Date.now() - i * 7200000).toISOString(),
       applicantId: `u${(i % 5) + 1}`,
-      applicantName: applicantNames[i % applicantNames.length]
+      applicantName: applicantNames[i % applicantNames.length],
+      putawayTaskId: status === 'approved' ? `pwt${i + 1}` : undefined
     };
   });
 };
 
-const generatePutawayTasks = (count: number): PutawayTask[] => {
+const generatePutawayTasks = (count: number, requests: ReplenishRequest[]): PutawayTask[] => {
   return Array.from({ length: count }, (_, i) => {
     const status = putawayStatuses[i % putawayStatuses.length];
     const hasAssignee = status !== 'pending';
+    const request = requests.find(r => r.id === `rr${i + 1}`);
     return {
       id: `pwt${i + 1}`,
       taskNo: `PUT${String(i + 1).padStart(5, '0')}`,
@@ -78,7 +107,11 @@ const generatePutawayTasks = (count: number): PutawayTask[] => {
       assigneeName: hasAssignee ? applicantNames[i % applicantNames.length] : undefined,
       status,
       createdAt: new Date(Date.now() - i * 3600000).toISOString(),
-      completedAt: status === 'completed' ? new Date(Date.now() - i * 1800000).toISOString() : undefined
+      completedAt: status === 'completed' ? new Date(Date.now() - i * 1800000).toISOString() : undefined,
+      sourceRequestNo: request?.requestNo,
+      sourceApplicantName: request?.applicantName,
+      sourceApprovedAt: request?.approvals?.[request.approvals.length - 1]?.approvedAt,
+      sourceApprovals: request?.approvals,
     };
   });
 };
@@ -98,10 +131,14 @@ interface InventoryState {
   completePutaway: (taskId: string) => Promise<void>;
 }
 
+const persisted = loadPersisted();
+const initialReplenishRequests: ReplenishRequest[] = persisted?.replenishRequests ?? [];
+const initialPutawayTasks: PutawayTask[] = persisted?.putawayTasks ?? [];
+
 export const useInventoryStore = create<InventoryState>((set, get) => ({
   inventory: [],
-  replenishRequests: [],
-  putawayTasks: [],
+  replenishRequests: initialReplenishRequests,
+  putawayTasks: initialPutawayTasks,
   loading: false,
   fetchInventory: async () => {
     set({ loading: true });
@@ -114,18 +151,28 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   fetchReplenishRequests: async () => {
     set({ loading: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
-    set((state) => ({
-      replenishRequests: state.replenishRequests.length > 0 ? state.replenishRequests : generateReplenishRequests(18),
-      loading: false,
-    }));
+    set((state) => {
+      if (state.replenishRequests.length > 0) {
+        return { loading: false };
+      }
+      const requests = generateReplenishRequests(18);
+      return { replenishRequests: requests, loading: false };
+    });
   },
   fetchPutawayTasks: async () => {
     set({ loading: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
-    set((state) => ({
-      putawayTasks: state.putawayTasks.length > 0 ? state.putawayTasks : generatePutawayTasks(15),
-      loading: false,
-    }));
+    set((state) => {
+      if (state.putawayTasks.length > 0) {
+        return { loading: false };
+      }
+      let requests = state.replenishRequests;
+      if (requests.length === 0) {
+        requests = generateReplenishRequests(18);
+      }
+      const tasks = generatePutawayTasks(15, requests);
+      return { replenishRequests: requests, putawayTasks: tasks, loading: false };
+    });
   },
   approveReplenish: async (requestId, level, approverId, comment, action) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -138,8 +185,8 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       comment,
       approvedAt: new Date().toISOString()
     };
-    set((state) => ({
-      replenishRequests: state.replenishRequests.map((r) => {
+    set((state) => {
+      const replenishRequests = state.replenishRequests.map((r) => {
         if (r.id !== requestId) return r;
         let newStatus: ReplenishStatus = r.status;
         if (action === 'reject') {
@@ -156,8 +203,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
           approvals: [...r.approvals, newApproval],
           status: newStatus
         };
-      })
-    }));
+      });
+      savePersisted({ replenishRequests, putawayTasks: state.putawayTasks });
+      return { replenishRequests };
+    });
     if (action === 'approve' && level === 3) {
       await get().createPutawayTask(requestId);
     }
@@ -169,6 +218,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (!request) return state;
       const exists = state.putawayTasks.some(t => t.replenishRequestId === requestId);
       if (exists) return state;
+      const now = new Date().toISOString();
       const newTask: PutawayTask = {
         id: `pwt${Date.now()}`,
         taskNo: `PUT${String(Date.now()).slice(-5)}`,
@@ -178,39 +228,54 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         quantity: request.quantity,
         targetLocation: locations[Math.floor(Math.random() * locations.length)],
         status: 'pending',
-        createdAt: new Date().toISOString()
+        createdAt: now,
+        sourceRequestNo: request.requestNo,
+        sourceApplicantName: request.applicantName,
+        sourceApprovedAt: now,
+        sourceApprovals: [...request.approvals],
       };
-      return { putawayTasks: [newTask, ...state.putawayTasks] };
+      const replenishRequests = state.replenishRequests.map(r =>
+        r.id === requestId ? { ...r, putawayTaskId: newTask.id } : r
+      );
+      const putawayTasks = [newTask, ...state.putawayTasks];
+      savePersisted({ replenishRequests, putawayTasks });
+      return { replenishRequests, putawayTasks };
     });
   },
   claimPutawayTask: async (taskId, userId, userName) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
-    set((state) => ({
-      putawayTasks: state.putawayTasks.map((t) =>
+    set((state) => {
+      const putawayTasks = state.putawayTasks.map((t) =>
         t.id === taskId && t.status === 'pending'
           ? { ...t, status: 'assigned', assigneeId: userId, assigneeName: userName }
           : t
-      )
-    }));
+      );
+      savePersisted({ replenishRequests: state.replenishRequests, putawayTasks });
+      return { putawayTasks };
+    });
   },
   startPutaway: async (taskId) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
-    set((state) => ({
-      putawayTasks: state.putawayTasks.map((t) =>
+    set((state) => {
+      const putawayTasks = state.putawayTasks.map((t) =>
         t.id === taskId && t.status === 'assigned'
           ? { ...t, status: 'in_progress' }
           : t
-      )
-    }));
+      );
+      savePersisted({ replenishRequests: state.replenishRequests, putawayTasks });
+      return { putawayTasks };
+    });
   },
   completePutaway: async (taskId) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
-    set((state) => ({
-      putawayTasks: state.putawayTasks.map((t) =>
+    set((state) => {
+      const putawayTasks = state.putawayTasks.map((t) =>
         t.id === taskId && t.status === 'in_progress'
           ? { ...t, status: 'completed', completedAt: new Date().toISOString() }
           : t
-      )
-    }));
+      );
+      savePersisted({ replenishRequests: state.replenishRequests, putawayTasks });
+      return { putawayTasks };
+    });
   }
 }));
