@@ -198,9 +198,10 @@ export default function InventoryReplenishPage() {
             const currentLevel = getCurrentApprovalLevel(request.status);
             const isMyTurn = canApprove(request);
             const isLowStock = request.currentStock < request.safeStock;
-            const linkedPutaway = putawayTasks.find(
-              (t) => t.replenishRequestId === request.id || t.id === request.putawayTaskId
-            );
+            const linkedPutaway =
+              request.status === 'approved'
+                ? putawayTasks.find((t) => t.replenishRequestId === request.id || t.id === request.putawayTaskId)
+                : undefined;
 
             return (
               <div

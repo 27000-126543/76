@@ -216,28 +216,49 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set((state) => {
       const request = state.replenishRequests.find((r) => r.id === requestId);
       if (!request) return state;
-      const exists = state.putawayTasks.some(t => t.replenishRequestId === requestId);
-      if (exists) return state;
       const now = new Date().toISOString();
-      const newTask: PutawayTask = {
-        id: `pwt${Date.now()}`,
-        taskNo: `PUT${String(Date.now()).slice(-5)}`,
-        replenishRequestId: requestId,
-        skuId: request.skuId,
-        skuName: request.skuName,
-        quantity: request.quantity,
-        targetLocation: locations[Math.floor(Math.random() * locations.length)],
-        status: 'pending',
-        createdAt: now,
-        sourceRequestNo: request.requestNo,
-        sourceApplicantName: request.applicantName,
-        sourceApprovedAt: now,
-        sourceApprovals: [...request.approvals],
-      };
-      const replenishRequests = state.replenishRequests.map(r =>
-        r.id === requestId ? { ...r, putawayTaskId: newTask.id } : r
+      const existingIdx = state.putawayTasks.findIndex((t) => t.replenishRequestId === requestId);
+
+      let putawayTasks: PutawayTask[];
+      let taskId: string;
+
+      if (existingIdx >= 0) {
+        const existing = state.putawayTasks[existingIdx];
+        const corrected: PutawayTask = {
+          ...existing,
+          skuId: request.skuId,
+          skuName: request.skuName,
+          quantity: request.quantity,
+          sourceRequestNo: request.requestNo,
+          sourceApplicantName: request.applicantName,
+          sourceApprovedAt: now,
+          sourceApprovals: [...request.approvals],
+        };
+        putawayTasks = state.putawayTasks.map((t, i) => (i === existingIdx ? corrected : t));
+        taskId = existing.id;
+      } else {
+        const newTask: PutawayTask = {
+          id: `pwt${Date.now()}`,
+          taskNo: `PUT${String(Date.now()).slice(-5)}`,
+          replenishRequestId: requestId,
+          skuId: request.skuId,
+          skuName: request.skuName,
+          quantity: request.quantity,
+          targetLocation: locations[Math.floor(Math.random() * locations.length)],
+          status: 'pending',
+          createdAt: now,
+          sourceRequestNo: request.requestNo,
+          sourceApplicantName: request.applicantName,
+          sourceApprovedAt: now,
+          sourceApprovals: [...request.approvals],
+        };
+        putawayTasks = [newTask, ...state.putawayTasks];
+        taskId = newTask.id;
+      }
+
+      const replenishRequests = state.replenishRequests.map((r) =>
+        r.id === requestId ? { ...r, putawayTaskId: taskId } : r
       );
-      const putawayTasks = [newTask, ...state.putawayTasks];
       savePersisted({ replenishRequests, putawayTasks });
       return { replenishRequests, putawayTasks };
     });

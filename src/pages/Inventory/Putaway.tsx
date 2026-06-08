@@ -60,8 +60,10 @@ export default function InventoryPutawayPage() {
   const user = useAuthStore((state) => state.user);
   const {
     putawayTasks,
+    replenishRequests,
     loading,
     fetchPutawayTasks,
+    fetchReplenishRequests,
     claimPutawayTask,
     startPutaway,
     completePutaway,
@@ -81,8 +83,9 @@ export default function InventoryPutawayPage() {
   useEffect(() => {
     if (canAccess('leader')) {
       fetchPutawayTasks();
+      fetchReplenishRequests();
     }
-  }, [canAccess, fetchPutawayTasks]);
+  }, [canAccess, fetchPutawayTasks, fetchReplenishRequests]);
 
   if (!canAccess('leader')) {
     return (
@@ -243,7 +246,10 @@ export default function InventoryPutawayPage() {
           {putawayTasks.map((task) => {
             const currentIndex = statusFlow.indexOf(task.status);
             const myTask = isMyTask(task);
-            const hasSource = !!task.sourceRequestNo;
+            const linkedRequest = replenishRequests.find(
+              (r) => r.id === task.replenishRequestId || r.putawayTaskId === task.id
+            );
+            const hasSource = !!task.sourceRequestNo && linkedRequest?.status === 'approved';
 
             return (
               <div
