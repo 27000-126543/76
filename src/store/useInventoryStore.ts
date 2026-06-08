@@ -1,0 +1,163 @@
+import { create } from 'zustand';
+import type { Inventory, ReplenishRequest, PutawayTask, ABCClass, ReplenishStatus, PutawayTaskStatus } from '../types';
+
+const skuNames = ['手机壳', '数据线', '蓝牙耳机', '充电宝', '手机膜', '充电器', '平板支架', '手表带', '键盘', '鼠标', '显示器', '硬盘', '内存条', '显卡', '主板'];
+const categories = ['手机配件', '电脑配件', '数码产品', '外设设备', '存储设备'];
+const locations = ['A-01-01', 'A-01-02', 'A-02-01', 'A-02-03', 'B-01-02', 'B-02-01', 'B-03-02', 'C-01-01', 'C-02-02', 'C-03-01'];
+const abcClasses: ABCClass[] = ['A', 'B', 'C'];
+const replenishStatuses: ReplenishStatus[] = ['pending_supervisor', 'pending_manager', 'pending_director', 'approved', 'rejected'];
+const putawayStatuses: PutawayTaskStatus[] = ['pending', 'assigned', 'in_progress', 'completed'];
+const reasons = ['库存低于安全线', '即将促销备货', '季节性需求增加', '常规补货', '紧急补货'];
+const applicantNames = ['张三', '李四', '王五', '赵六', '钱七'];
+const approverNames = ['李主管', '王经理', '赵总监'];
+
+const generateInventory = (count: number): Inventory[] => {
+  return Array.from({ length: count }, (_, i) => {
+    const safeStock = Math.floor(Math.random() * 200) + 50;
+    return {
+      id: `inv${i + 1}`,
+      skuId: `SKU${String(1000 + i).padStart(4, '0')}`,
+      skuName: skuNames[i % skuNames.length],
+      category: categories[i % categories.length],
+      quantity: Math.floor(Math.random() * 500) + 20,
+      safeStock,
+      location: locations[i % locations.length],
+      abcClass: abcClasses[i % abcClasses.length],
+      lastRestockAt: new Date(Date.now() - i * 86400000).toISOString()
+    };
+  });
+};
+
+const generateReplenishRequests = (count: number): ReplenishRequest[] => {
+  return Array.from({ length: count }, (_, i) => {
+    const status = replenishStatuses[i % replenishStatuses.length];
+    const approvalsCount = status === 'pending_supervisor' ? 0 :
+                          status === 'pending_manager' ? 1 :
+                          status === 'pending_director' ? 2 :
+                          status === 'approved' ? 3 :
+                          Math.floor(Math.random() * 3) + 1;
+    const approvals = Array.from({ length: approvalsCount }, (_, j) => ({
+      level: (j + 1) as 1 | 2 | 3,
+      approverId: `a${j + 1}`,
+      approverName: approverNames[j],
+      action: (j === approvalsCount - 1 && status === 'rejected') ? 'reject' : 'approve' as 'approve' | 'reject',
+      comment: j === approvalsCount - 1 && status === 'rejected' ? '库存充足，暂缓补货' : '同意补货',
+      approvedAt: new Date(Date.now() - (i + j) * 3600000).toISOString()
+    }));
+    return {
+      id: `rr${i + 1}`,
+      requestNo: `REP${String(i + 1).padStart(5, '0')}`,
+      skuId: `SKU${String(1000 + i).padStart(4, '0')}`,
+      skuName: skuNames[i % skuNames.length],
+      quantity: Math.floor(Math.random() * 500) + 100,
+      reason: reasons[i % reasons.length],
+      currentStock: Math.floor(Math.random() * 50) + 10,
+      safeStock: Math.floor(Math.random() * 100) + 50,
+      approvals,
+      status,
+      createdAt: new Date(Date.now() - i * 7200000).toISOString(),
+      applicantId: `u${(i % 5) + 1}`,
+      applicantName: applicantNames[i % applicantNames.length]
+    };
+  });
+};
+
+const generatePutawayTasks = (count: number): PutawayTask[] => {
+  return Array.from({ length: count }, (_, i) => {
+    const status = putawayStatuses[i % putawayStatuses.length];
+    const hasAssignee = status !== 'pending';
+    return {
+      id: `pwt${i + 1}`,
+      taskNo: `PUT${String(i + 1).padStart(5, '0')}`,
+      replenishRequestId: `rr${i + 1}`,
+      skuId: `SKU${String(1000 + i).padStart(4, '0')}`,
+      skuName: skuNames[i % skuNames.length],
+      quantity: Math.floor(Math.random() * 500) + 100,
+      targetLocation: locations[i % locations.length],
+      assigneeId: hasAssignee ? `u${(i % 5) + 1}` : undefined,
+      assigneeName: hasAssignee ? applicantNames[i % applicantNames.length] : undefined,
+      status,
+      createdAt: new Date(Date.now() - i * 3600000).toISOString(),
+      completedAt: status === 'completed' ? new Date(Date.now() - i * 1800000).toISOString() : undefined
+    };
+  });
+};
+
+interface InventoryState {
+  inventory: Inventory[];
+  replenishRequests: ReplenishRequest[];
+  putawayTasks: PutawayTask[];
+  loading: boolean;
+  fetchInventory: () => Promise<void>;
+  fetchReplenishRequests: () => Promise<void>;
+  approveReplenish: (requestId: string, level: 1 | 2 | 3, approverId: string, comment: string, action: 'approve' | 'reject') => Promise<void>;
+  createPutawayTask: (requestId: string) => Promise<void>;
+}
+
+export const useInventoryStore = create<InventoryState>((set) => ({
+  inventory: [],
+  replenishRequests: [],
+  putawayTasks: [],
+  loading: false,
+  fetchInventory: async () => {
+    set({ loading: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    set({ inventory: generateInventory(25), loading: false });
+  },
+  fetchReplenishRequests: async () => {
+    set({ loading: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    set({ replenishRequests: generateReplenishRequests(18), loading: false });
+  },
+  approveReplenish: async (requestId, level, approverId, comment, action) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const approverName = approverNames[level - 1];
+    const newApproval = {
+      level,
+      approverId,
+      approverName,
+      action,
+      comment,
+      approvedAt: new Date().toISOString()
+    };
+    set((state) => ({
+      replenishRequests: state.replenishRequests.map((r) => {
+        if (r.id !== requestId) return r;
+        let newStatus: ReplenishStatus = r.status;
+        if (action === 'reject') {
+          newStatus = 'rejected';
+        } else if (level === 1) {
+          newStatus = 'pending_manager';
+        } else if (level === 2) {
+          newStatus = 'pending_director';
+        } else if (level === 3) {
+          newStatus = 'approved';
+        }
+        return {
+          ...r,
+          approvals: [...r.approvals, newApproval],
+          status: newStatus
+        };
+      })
+    }));
+  },
+  createPutawayTask: async (requestId) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => {
+      const request = state.replenishRequests.find((r) => r.id === requestId);
+      if (!request) return state;
+      const newTask: PutawayTask = {
+        id: `pwt${Date.now()}`,
+        taskNo: `PUT${String(Date.now()).slice(-5)}`,
+        replenishRequestId: requestId,
+        skuId: request.skuId,
+        skuName: request.skuName,
+        quantity: request.quantity,
+        targetLocation: locations[Math.floor(Math.random() * locations.length)],
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+      return { putawayTasks: [newTask, ...state.putawayTasks] };
+    });
+  }
+}));
