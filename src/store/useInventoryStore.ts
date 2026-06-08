@@ -90,11 +90,15 @@ interface InventoryState {
   loading: boolean;
   fetchInventory: () => Promise<void>;
   fetchReplenishRequests: () => Promise<void>;
+  fetchPutawayTasks: () => Promise<void>;
   approveReplenish: (requestId: string, level: 1 | 2 | 3, approverId: string, comment: string, action: 'approve' | 'reject') => Promise<void>;
   createPutawayTask: (requestId: string) => Promise<void>;
+  claimPutawayTask: (taskId: string, userId: string, userName: string) => Promise<void>;
+  startPutaway: (taskId: string) => Promise<void>;
+  completePutaway: (taskId: string) => Promise<void>;
 }
 
-export const useInventoryStore = create<InventoryState>((set) => ({
+export const useInventoryStore = create<InventoryState>((set, get) => ({
   inventory: [],
   replenishRequests: [],
   putawayTasks: [],
@@ -108,6 +112,11 @@ export const useInventoryStore = create<InventoryState>((set) => ({
     set({ loading: true });
     await new Promise((resolve) => setTimeout(resolve, 500));
     set({ replenishRequests: generateReplenishRequests(18), loading: false });
+  },
+  fetchPutawayTasks: async () => {
+    set({ loading: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    set({ putawayTasks: generatePutawayTasks(15), loading: false });
   },
   approveReplenish: async (requestId, level, approverId, comment, action) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -140,12 +149,17 @@ export const useInventoryStore = create<InventoryState>((set) => ({
         };
       })
     }));
+    if (action === 'approve' && level === 3) {
+      await get().createPutawayTask(requestId);
+    }
   },
   createPutawayTask: async (requestId) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     set((state) => {
       const request = state.replenishRequests.find((r) => r.id === requestId);
       if (!request) return state;
+      const exists = state.putawayTasks.some(t => t.replenishRequestId === requestId);
+      if (exists) return state;
       const newTask: PutawayTask = {
         id: `pwt${Date.now()}`,
         taskNo: `PUT${String(Date.now()).slice(-5)}`,
@@ -159,5 +173,35 @@ export const useInventoryStore = create<InventoryState>((set) => ({
       };
       return { putawayTasks: [newTask, ...state.putawayTasks] };
     });
+  },
+  claimPutawayTask: async (taskId, userId, userName) => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    set((state) => ({
+      putawayTasks: state.putawayTasks.map((t) =>
+        t.id === taskId && t.status === 'pending'
+          ? { ...t, status: 'assigned', assigneeId: userId, assigneeName: userName }
+          : t
+      )
+    }));
+  },
+  startPutaway: async (taskId) => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    set((state) => ({
+      putawayTasks: state.putawayTasks.map((t) =>
+        t.id === taskId && t.status === 'assigned'
+          ? { ...t, status: 'in_progress' }
+          : t
+      )
+    }));
+  },
+  completePutaway: async (taskId) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => ({
+      putawayTasks: state.putawayTasks.map((t) =>
+        t.id === taskId && t.status === 'in_progress'
+          ? { ...t, status: 'completed', completedAt: new Date().toISOString() }
+          : t
+      )
+    }));
   }
 }));

@@ -307,10 +307,7 @@ export function Header({
                 </p>
               </div>
               <button
-                onClick={() => {
-                  onUserClick?.();
-                  setShowUserMenu(false);
-                }}
+                onClick={() => setShowUserMenu(false)}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-dark-200 hover:bg-dark-700/50 transition-colors"
               >
                 <User className="w-4 h-4" />

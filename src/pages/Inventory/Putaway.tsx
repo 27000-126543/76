@@ -49,7 +49,14 @@ const statusFlow: PutawayTaskStatus[] = ['pending', 'assigned', 'in_progress', '
 export default function InventoryPutawayPage() {
   const { canAccess } = usePermission();
   const user = useAuthStore((state) => state.user);
-  const { putawayTasks, loading, fetchReplenishRequests, fetchInventory } = useInventoryStore();
+  const {
+    putawayTasks,
+    loading,
+    fetchPutawayTasks,
+    claimPutawayTask,
+    startPutaway,
+    completePutaway,
+  } = useInventoryStore();
 
   const [selectedTask, setSelectedTask] = useState<PutawayTask | null>(null);
   const [scanModalOpen, setScanModalOpen] = useState(false);
@@ -58,18 +65,14 @@ export default function InventoryPutawayPage() {
   const [scanning, setScanning] = useState(false);
   const [scanSuccess, setScanSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [localTasks, setLocalTasks] = useState<PutawayTask[]>([]);
+  const [acceptLoading, setAcceptLoading] = useState<string | null>(null);
+  const [startLoading, setStartLoading] = useState<string | null>(null);
 
   useEffect(() => {
     if (canAccess('picker')) {
-      fetchReplenishRequests();
-      fetchInventory();
+      fetchPutawayTasks();
     }
-  }, [canAccess, fetchReplenishRequests, fetchInventory]);
-
-  useEffect(() => {
-    setLocalTasks(putawayTasks);
-  }, [putawayTasks]);
+  }, [canAccess, fetchPutawayTasks]);
 
   if (!canAccess('picker')) {
     return (
@@ -106,34 +109,23 @@ export default function InventoryPutawayPage() {
     setCompleteModalOpen(true);
   };
 
-  const acceptTask = (taskId: string) => {
+  const acceptTask = async (taskId: string) => {
     if (!user) return;
-    setLocalTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? { ...t, status: 'assigned' as PutawayTaskStatus, assigneeId: user.id, assigneeName: user.name }
-          : t
-      )
-    );
+    setAcceptLoading(taskId);
+    await claimPutawayTask(taskId, user.id, user.name);
+    setAcceptLoading(null);
   };
 
-  const startTask = (taskId: string) => {
-    setLocalTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: 'in_progress' as PutawayTaskStatus } : t))
-    );
+  const startTask = async (taskId: string) => {
+    setStartLoading(taskId);
+    await startPutaway(taskId);
+    setStartLoading(null);
   };
 
   const completeTask = async () => {
     if (!selectedTask) return;
     setSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setLocalTasks((prev) =>
-      prev.map((t) =>
-        t.id === selectedTask.id
-          ? { ...t, status: 'completed' as PutawayTaskStatus, completedAt: new Date().toISOString() }
-          : t
-      )
-    );
+    await completePutaway(selectedTask.id);
     setSubmitting(false);
     setCompleteModalOpen(false);
     setScanModalOpen(false);
@@ -153,8 +145,8 @@ export default function InventoryPutawayPage() {
     task.status === 'in_progress' &&
     (task.assigneeId === user?.id || canAccess('leader'));
 
-  const pendingCount = localTasks.filter((t) => t.status !== 'completed').length;
-  const myTaskCount = localTasks.filter((t) => t.assigneeId === user?.id && t.status !== 'completed').length;
+  const pendingCount = putawayTasks.filter((t) => t.status !== 'completed').length;
+  const myTaskCount = putawayTasks.filter((t) => t.assigneeId === user?.id && t.status !== 'completed').length;
 
   return (
     <div className="space-y-6">
@@ -192,7 +184,7 @@ export default function InventoryPutawayPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {localTasks.map((task) => {
+          {putawayTasks.map((task) => {
             const currentIndex = statusFlow.indexOf(task.status);
             const myTask = isMyTask(task);
 
@@ -333,6 +325,7 @@ export default function InventoryPutawayPage() {
                           variant="primary"
                           size="sm"
                           onClick={() => acceptTask(task.id)}
+                          loading={acceptLoading === task.id}
                           rightIcon={<ArrowRight className="w-4 h-4" />}
                         >
                           领取任务
@@ -342,6 +335,7 @@ export default function InventoryPutawayPage() {
                         <Button
                           variant="primary"
                           size="sm"
+                          loading={startLoading === task.id}
                           onClick={() => {
                             startTask(task.id);
                             openScan(task);
@@ -368,7 +362,7 @@ export default function InventoryPutawayPage() {
             );
           })}
 
-          {localTasks.length === 0 && (
+          {putawayTasks.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-dark-500">
               <Package className="w-16 h-16 mb-4 opacity-40" />
               <p className="text-sm">暂无上架任务</p>
