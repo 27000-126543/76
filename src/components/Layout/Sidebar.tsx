@@ -109,7 +109,7 @@ const defaultMenuItems: MenuItem[] = [
     label: '上架任务',
     icon: FileUp,
     path: '/inventory/putaway',
-    roles: ['picker', 'leader', 'manager', 'director'],
+    roles: ['leader', 'manager', 'director'],
   },
   {
     key: 'equipment',

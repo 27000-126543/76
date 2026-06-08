@@ -212,7 +212,7 @@ export default function Maintenance() {
       icon: PlusCircle,
       color: 'text-primary-500 bg-primary-500/10',
     });
-    if (order.escalatedAt && !order.acceptedAt) {
+    if (order.escalatedAt) {
       items.push({
         time: formatDateTime(order.escalatedAt),
         title: '自动升级',
@@ -228,15 +228,6 @@ export default function Maintenance() {
         desc: `${order.assigneeName || order.teamName || '维修人员'} 已接单${order.escalatedAt ? '（升级后）' : ''}`,
         icon: PlayCircle,
         color: 'text-warning bg-warning/10',
-      });
-    }
-    if (order.escalatedAt && order.acceptedAt && new Date(order.escalatedAt).getTime() > new Date(order.acceptedAt).getTime()) {
-      items.push({
-        time: formatDateTime(order.escalatedAt),
-        title: '工单升级',
-        desc: '已升级至设备部长',
-        icon: AlertTriangle,
-        color: 'text-danger bg-danger/10',
       });
     }
     if (order.completedAt) {

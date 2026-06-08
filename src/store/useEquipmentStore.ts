@@ -120,14 +120,22 @@ export const useEquipmentStore = create<EquipmentState>((set, get) => ({
   loading: false,
   fetchEquipment: async () => {
     set({ loading: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    set({ equipment: generateEquipment(20), sortingStations: generateSortingStations(12), loading: false });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => ({
+      equipment: state.equipment.length > 0 ? state.equipment : generateEquipment(20),
+      sortingStations: state.sortingStations.length > 0 ? state.sortingStations : generateSortingStations(12),
+      loading: false,
+    }));
   },
   fetchMaintenanceOrders: async () => {
     set({ loading: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const orders = checkAndEscalate(generateMaintenanceOrders(15));
-    set({ maintenanceOrders: orders, loading: false });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => {
+      const orders = state.maintenanceOrders.length > 0
+        ? state.maintenanceOrders
+        : generateMaintenanceOrders(15);
+      return { maintenanceOrders: checkAndEscalate(orders), loading: false };
+    });
   },
   acceptMaintenance: async (orderId) => {
     await new Promise((resolve) => setTimeout(resolve, 300));

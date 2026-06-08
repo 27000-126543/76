@@ -105,18 +105,27 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   loading: false,
   fetchInventory: async () => {
     set({ loading: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    set({ inventory: generateInventory(25), loading: false });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => ({
+      inventory: state.inventory.length > 0 ? state.inventory : generateInventory(25),
+      loading: false,
+    }));
   },
   fetchReplenishRequests: async () => {
     set({ loading: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    set({ replenishRequests: generateReplenishRequests(18), loading: false });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => ({
+      replenishRequests: state.replenishRequests.length > 0 ? state.replenishRequests : generateReplenishRequests(18),
+      loading: false,
+    }));
   },
   fetchPutawayTasks: async () => {
     set({ loading: true });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    set({ putawayTasks: generatePutawayTasks(15), loading: false });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    set((state) => ({
+      putawayTasks: state.putawayTasks.length > 0 ? state.putawayTasks : generatePutawayTasks(15),
+      loading: false,
+    }));
   },
   approveReplenish: async (requestId, level, approverId, comment, action) => {
     await new Promise((resolve) => setTimeout(resolve, 300));

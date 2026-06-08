@@ -99,7 +99,7 @@ export default function App() {
           <Route
             path="inventory/putaway"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute requiredRole="leader">
                 <Putaway />
               </ProtectedRoute>
             }
